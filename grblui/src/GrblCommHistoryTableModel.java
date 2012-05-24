@@ -21,7 +21,7 @@ public class GrblCommHistoryTableModel extends AbstractTableModel {
 
     public GrblCommHistoryTableModel() {
 		super();
-		data= new GCodeLineBuffer(this);
+		data= new GCodeLineBuffer();
 	}
 
 	public int getColumnCount() {

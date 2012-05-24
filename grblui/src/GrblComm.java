@@ -11,7 +11,6 @@ import java.io.OutputStream;
 import javax.swing.JOptionPane;
 
 public class GrblComm implements SerialPortEventListener {
-	public static final int GRBL_RX_BUFFER_SIZE= 128;
 	public static final int SETTINGS_GOTTEN= 0;
 	public static final int SETTINGS_TIME_OUT= 1;
 	public static final int SETTINGS_MISMATCH= 2;
