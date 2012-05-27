@@ -9,9 +9,9 @@ import javax.swing.text.InternationalFormatter;
 
 public class GrblSettings extends ArrayList<GrblParameter>{
 	private static final long serialVersionUID = 1L;
-	private GrblComm grblComm;
+	private GrblCommunicator grblComm;
 
-	public GrblSettings(GrblComm grblComm) {
+	public GrblSettings(GrblCommunicator grblComm) {
 		super();
 		this.grblComm = grblComm;
 	}

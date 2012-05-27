@@ -34,7 +34,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 	private JTextField jtfInput;
 	private static GrblCommHistoryTableModel grblCommHistory;
 	private JTable table;
-	private static GrblComm grblComm;
+	private static GrblSerialComm grblComm;
 	private JSpinner[] posSpinner= new JSpinner[3];
 	private JButton[] posReset= new JButton[3];
 	private JButton stopButton;
@@ -54,7 +54,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 			String verString= null;
 			try {
 				grblCommHistory= new GrblCommHistoryTableModel();
-				grblComm= new GrblComm(grblCommHistory.data);
+				grblComm= new GrblSerialComm(grblCommHistory.data);
 				verString= grblComm.connect(port);
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -63,7 +63,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 
 			if(verString!=null) {
 				int settingsOK= grblComm.getSettings();
-				if(settingsOK==GrblComm.SETTINGS_GOTTEN) {
+				if(settingsOK==GrblSerialComm.SETTINGS_GOTTEN) {
 //					Iterator<GrblParameter> pIter= grblComm.settings.iterator();
 //					while(pIter.hasNext())
 //						System.out.println(pIter.next().lable);
@@ -82,9 +82,9 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 					});
 				} else {
 					switch(settingsOK) {
-					case GrblComm.SETTINGS_MISMATCH:
+					case GrblSerialComm.SETTINGS_MISMATCH:
 						JOptionPane.showMessageDialog(null, "Error: mismatch between grbl version and settings", "Grbl Error", JOptionPane.ERROR_MESSAGE);
-					case GrblComm.SETTINGS_TIME_OUT:
+					case GrblSerialComm.SETTINGS_TIME_OUT:
 						JOptionPane.showMessageDialog(null, "Error: time out getting grbl settings", "Grbl Error", JOptionPane.ERROR_MESSAGE);						
 					}					
 				}

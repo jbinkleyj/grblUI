@@ -10,36 +10,26 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import javax.swing.JOptionPane;
 
-public class GrblComm implements SerialPortEventListener, GrblProtocolProcessor {
-	public static final int SETTINGS_GOTTEN= 0;
-	public static final int SETTINGS_TIME_OUT= 1;
-	public static final int SETTINGS_MISMATCH= 2;
+public class GrblSerialComm extends GrblCommunicator implements SerialPortEventListener, GrblProtocolProcessor {
 	private SerialPort serialPort;
     private InputStream in;
-    private ThreadSafeSerialSender sender;
-    private GCodeLineBuffer lineBuffer;
     private byte[] inBuffer = new byte[1024];
     private int bytesInBuffer= 0;
     private int ticksWithoutMotion= 0;
     private final int NO_MOTION_TICKS= 4;
     public Float[] currPos= new Float[3];
     private Float[] lastPos= new Float[3];
-    public String verString;
-    public GrblSettings settings;
     
     private QueryTickWriter queryTickWriter;
-    private GrblBufferWriter serialWriter;
     private Thread queryTickWriterThread;
-    private Thread serialWriterThread;
-    private boolean ignoreNextOK= false;
     
     private CNCPositionListener positionListener= null;
-	private boolean resetting= false;
 	
-    public GrblComm(GCodeLineBuffer lineBuffer) {
-    	this.lineBuffer= lineBuffer;
-    }
-    
+	public GrblSerialComm(GCodeLineBuffer lineBuffer) {
+		super(lineBuffer);
+		
+	}
+
     public String connect(String portName) throws Exception {
         CommPortIdentifier portIdentifier= CommPortIdentifier.getPortIdentifier(portName);
         if (portIdentifier.isCurrentlyOwned()) {
@@ -59,13 +49,12 @@ public class GrblComm implements SerialPortEventListener, GrblProtocolProcessor 
                 serialPort.setSerialPortParams(9600,SerialPort.DATABITS_8,SerialPort.STOPBITS_1,SerialPort.PARITY_NONE);
                 
                 in= serialPort.getInputStream();
-                sender= new ThreadSafeSerialSender(serialPort.getOutputStream());
                                
-                (serialWriterThread= (new Thread(serialWriter= new GrblBufferWriter(sender, lineBuffer, this)))).start();
-                (queryTickWriterThread= (new Thread(queryTickWriter= new QueryTickWriter()))).start();
                 
                 serialPort.addEventListener(this);
                 serialPort.notifyOnDataAvailable(true);
+                
+                setupWriter();
                 
                 return getVersionString();
             } else {
@@ -75,21 +64,13 @@ public class GrblComm implements SerialPortEventListener, GrblProtocolProcessor 
         }
     }
     
+    protected void setupWriter() {
+		super.setupWriter();
+        (queryTickWriterThread= (new Thread(queryTickWriter= new QueryTickWriter()))).start();		
+	}
+	
     public void setPositionListener(CNCPositionListener positionListener) {
     	this.positionListener= positionListener;
-    }
-    
-    private synchronized String getVersionString() {
-    	if(verString==null)
-			try {
-				wait(3000);
-			} catch (InterruptedException e) {}
-    	return verString;
-    }
-    
-    private synchronized void setVersionString(String s) {
-    	verString= s;
-    	notify();
     }
     
 	public void serialEvent(SerialPortEvent arg0) {
@@ -107,7 +88,7 @@ public class GrblComm implements SerialPortEventListener, GrblProtocolProcessor 
 //			if(!rxLine.startsWith("MPos:"))
 //				System.out.println(rxLine);
 			bytesInBuffer= 0;
-			serialWriter.lineReceived(rxLine);
+			lineReceived(rxLine);
 		}
 	}
 
@@ -116,7 +97,7 @@ public class GrblComm implements SerialPortEventListener, GrblProtocolProcessor 
 
 		public void run() {
 			while (!exit) {
-				sender.send("?".getBytes());
+				send("?".getBytes());
 				
 				try {
 					Thread.sleep(100);
@@ -125,37 +106,8 @@ public class GrblComm implements SerialPortEventListener, GrblProtocolProcessor 
 		}
 	}
 
-	public synchronized void pause() {
-//		System.out.println("Sending Pause");
-		sender.send("!".getBytes());
-	}
-	
-	public synchronized void start() {
-		sender.send("~".getBytes());
-	}
-	
-	public synchronized void reset() {
-		verString= null;
-		resetting= true;
-		byte[] resetChar= new byte[1];
-		resetChar[0]= 0x18;
-		sender.send(resetChar);
-		getVersionString();
-		
-		lineBuffer.reset();
-		resetting= false;
-	}
-	
 	public void dispose() {
-	     if(serialWriter != null) {
-	    	 serialWriter.exit = true;
-	         try {
-	        	 serialWriterThread.join();
-	         } catch (InterruptedException e) {}
-	         
-	         serialWriter = null;
-	         serialWriterThread = null;
-	     }
+		super.dispose();
 	     if(queryTickWriter != null) {
 	    	 queryTickWriter.exit = true;
 	         try {
@@ -164,7 +116,7 @@ public class GrblComm implements SerialPortEventListener, GrblProtocolProcessor 
 	         
 	         queryTickWriter = null;
 	         queryTickWriterThread = null;
-        }
+      }
 		if(serialPort!=null)
 			serialPort.close();
 	}
@@ -194,12 +146,8 @@ public class GrblComm implements SerialPortEventListener, GrblProtocolProcessor 
 	
 	public void lineSent(GCodeLine line) {
 		line.sent= true;
+		lineBuffer.numSentLines++;
 		lineBuffer.setDirty(line.no);
-		
-	}
-	
-	public void verStrReceived(String verStr) {
-		setVersionString(verStr);
 	}
 	
 	public void settingReceived(int idx, Double val, String lable) {

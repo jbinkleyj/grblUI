@@ -8,7 +8,7 @@ public class GCodeLineBuffer extends LinkedList<GCodeLine> {
 	private MotionChangeListener motionChangeListener= null;
 	private int currentLineNo= 1;
 	private int offset= 0;
-	private LinkedList<Integer> modifiedList= new LinkedList<Integer>();
+	public int numSentLines= 0;
 	private GrblCommHistoryTableModel tableModel;
 	
 	public GCodeLineBuffer(GrblCommHistoryTableModel tableModel) {
@@ -16,6 +16,14 @@ public class GCodeLineBuffer extends LinkedList<GCodeLine> {
 		this.tableModel= tableModel;
 	}
 
+	public int getNumUnsentLines() {
+		return (size()+offset)-numSentLines;
+	}
+	
+	public int getLastSentLineTableIdx() {
+		return 0;
+	}
+	
 	public void setMotionChangeListener(MotionChangeListener motionChangeListener) {
 		this.motionChangeListener= motionChangeListener;
 	}
@@ -66,7 +74,6 @@ public class GCodeLineBuffer extends LinkedList<GCodeLine> {
 			try {
 				wait();
 			} catch (InterruptedException e) {}
-		if()
 		return get(i);
 	}
 

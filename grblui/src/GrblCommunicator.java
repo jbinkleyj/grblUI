@@ -1,33 +1,59 @@
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.LinkedList;
 
 
-public class GrblBufferWriter implements Runnable {
-	private ThreadSafeSerialSender sender;
+public abstract class GrblCommunicator {
+	public static final int SETTINGS_GOTTEN= 0;
+	public static final int SETTINGS_TIME_OUT= 1;
+	public static final int SETTINGS_MISMATCH= 2;
+	
 	private int nextToSendLineNo= 1;
 	private static final int GRBL_RX_BUFFER_SIZE= 128;
 	private int nextToSendMaxLength= GRBL_RX_BUFFER_SIZE;
-	private LinkedList<GCodeLine> sentLines = new LinkedList<GCodeLine>();
-	private GCodeLineBuffer lineBuffer;
+	protected LinkedList<GCodeLine> sentLines = new LinkedList<GCodeLine>();
+	protected GCodeLineBuffer lineBuffer;
 	public boolean exit = false;
-	private GrblProtocolProcessor protocolProcessor;
     private boolean gettingSettings= false;
+	protected OutputStream out;
+	private GrblWriter writer;
+    private Thread writerThread;
 
-	public GrblBufferWriter(ThreadSafeSerialSender sender, GCodeLineBuffer lineBuffer, GrblProtocolProcessor protocolProcessor) {
+    public GrblSettings settings;
+    public String verString;
+
+	protected boolean resetting= false;
+	protected boolean ignoreNextOK= false;
+
+	public GrblCommunicator(GCodeLineBuffer lineBuffer) {
 		this.lineBuffer = lineBuffer;
-		this.protocolProcessor= protocolProcessor;
-		this.sender= sender;
 	}
 
-	@Override
-	public void run() {
-		String s;
-		while (!exit) {
-			s= getNextToSend().line;
-			if(!resetting)
-				send((s + "\n").getBytes());
+	protected void setupWriter() {
+        (writerThread= (new Thread(writer= new GrblWriter()))).start();
+	}
+	
+	private class GrblWriter implements Runnable {
+		public boolean exit = false;
+		@Override
+		public void run() {
+			String s;
+			while (!exit) {
+				s= getNextToSend().line;
+				if(!resetting)
+					send((s + "\n").getBytes());
+			}
 		}
 	}
-
+	
+    protected synchronized void send(byte[] b) {
+    	try {
+    		// TODO send byte by byte unsynchronized to be able to insert a
+    		//		runtime command at any time
+			out.write(b);
+		} catch (IOException e) {}
+    }
+    
 	public synchronized GCodeLine getNextToSend() {
 		GCodeLine l= lineBuffer.getLineNo(nextToSendLineNo);
 		nextToSendLineNo++;
@@ -39,7 +65,7 @@ public class GrblBufferWriter implements Runnable {
 		
 		sentLines.add(l);
 		nextToSendMaxLength-= l.line.length();
-		protocolProcessor.lineSent(l);
+		lineSent(l);
 		return l;
 	}
 	
@@ -61,9 +87,9 @@ public class GrblBufferWriter implements Runnable {
         	for(int i= 0; i<3; i++) {
         		pos[i]= Float.parseFloat(s[i+6]);
         	}
-    		protocolProcessor.newPosition(pos);
+    		newPosition(pos);
         } else if(rxLine.startsWith("Grbl ")) {
-        	protocolProcessor.verStrReceived(rxLine.substring(5));
+        	verStrReceived(rxLine.substring(5));
         } else if(rxLine.startsWith("'$' ")) {
         } else if(rxLine.startsWith("$")) {
         	String[] s = rxLine.substring(1).split("=");
@@ -81,7 +107,7 @@ public class GrblBufferWriter implements Runnable {
 					if(lable.startsWith("(")) lable= lable.substring(1);
 					if(lable.endsWith(")")) lable= lable.substring(0, lable.length()-1);
 					if(lable.length()>1) lable= lable.substring(0, 1).toUpperCase() + lable.substring(1);
-					protocolProcessor.settingReceived(idx.intValue(), val, lable);
+					settingReceived(idx.intValue(), val, lable);
 				}
 			} catch (NumberFormatException e) {}
         	
@@ -102,13 +128,13 @@ public class GrblBufferWriter implements Runnable {
 	public void setParameter(int idx, double val) {
 		String s= "$" + idx + "=" + val;
 		System.out.println(s);
-		sender.send((s + "\n").getBytes());
+		send((s + "\n").getBytes());
 	}
 	
 	public int getSettings() {
 		settings= new GrblSettings(this);
 		gettingSettings= true;
-		sender.send("$\n".getBytes());
+		send("$\n".getBytes());
 		
 		if(gotAllSettings())
 			if(settings.match(verString)) return SETTINGS_GOTTEN;
@@ -146,5 +172,55 @@ public class GrblBufferWriter implements Runnable {
 		else
 			return 0;
 	}
+
+	public synchronized void pause() {
+//		System.out.println("Sending Pause");
+		send("!".getBytes());
+	}
 	
+	public synchronized void start() {
+		send("~".getBytes());
+	}
+	
+	public synchronized void reset() {
+		verString= null;
+		resetting= true;
+		byte[] resetChar= new byte[1];
+		resetChar[0]= 0x18;
+		send(resetChar);
+		getVersionString();
+		
+		lineBuffer.reset();
+		resetting= false;
+	}
+	
+	public void dispose() {
+	     if(writer != null) {
+	    	 writer.exit = true;
+	         try {
+	        	 writerThread.join();
+	         } catch (InterruptedException e) {}
+	         
+	         writer = null;
+	         writerThread = null;
+	     }
+	}
+
+    protected synchronized String getVersionString() {
+    	if(verString==null)
+			try {
+				wait(3000);
+			} catch (InterruptedException e) {}
+    	return verString;
+    }
+    
+	public abstract void newPosition(Float[] pos);
+	
+	public void verStrReceived(String verStr) {
+    	verString= verStr;
+    	notify();
+    }
+	
+	public abstract void settingReceived(int idx, Double val, String lable);
+	public abstract void lineSent(GCodeLine line);
 }
