@@ -21,7 +21,7 @@ public class GCodeLineBuffer extends LinkedList<GCodeLine> {
 	}
 	
 	public int getLastSentLineTableIdx() {
-		return 0;
+		return(numSentLines-offset-1);
 	}
 	
 	public void setMotionChangeListener(MotionChangeListener motionChangeListener) {
