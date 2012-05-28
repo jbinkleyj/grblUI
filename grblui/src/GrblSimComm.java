@@ -5,6 +5,10 @@ import java.io.InputStreamReader;
 
 
 public class GrblSimComm extends GrblCommunicator {
+	public static final int CONNECT_OK= 0;
+	public static final int CONNECT_PROCESS_NOT_STARTED= 1;	
+	public static final int CONNECT_PROMPT_TIMEOUT= 5;
+	
     private Process process;
     
     private InputStream inStd;
@@ -19,18 +23,22 @@ public class GrblSimComm extends GrblCommunicator {
 	}
 
 	public int connect() {
-    	try {
-    		ProcessBuilder builder = new ProcessBuilder("a.exe");
-    		builder.redirectErrorStream(true);
-    		process = builder.start();
+		ProcessBuilder builder = new ProcessBuilder("a.exe");
+		builder.redirectErrorStream(true);
+		try {
+			process = builder.start();
+		} catch (IOException e) {
+			return CONNECT_PROCESS_NOT_STARTED;
+		}
 
-    		out= process.getOutputStream ();
-    		inErr= process.getErrorStream ();
-    		inStdReader= new BufferedReader(new InputStreamReader(inStd= process.getInputStream ()));
-            (readerThread= (new Thread(reader= new GrblReader()))).start();
-    	} catch (IOException e) {}
-		
-		return 0;
+		out= process.getOutputStream ();
+		inErr= process.getErrorStream ();
+		inStdReader= new BufferedReader(new InputStreamReader(inStd= process.getInputStream ()));
+        (readerThread= (new Thread(reader= new GrblReader()))).start();
+        setupWriter();
+        
+        if(versionStringOK()) return CONNECT_OK;
+        else return CONNECT_PROMPT_TIMEOUT;
 	}
 	
 	private class GrblReader implements Runnable {
@@ -42,10 +50,10 @@ public class GrblSimComm extends GrblCommunicator {
 				try {
 					rxLine= inStdReader.readLine();
 					if(rxLine==null || rxLine.length()==0) {
-						if(rxLine==null)
-							System.out.println("null line");
-						else
-							System.out.println("empty line");
+//						if(rxLine==null)
+//							System.out.println("null line");
+//						else
+//							System.out.println("empty line");
 						try {
 							Thread.sleep(10);
 						} catch (InterruptedException e) {}
@@ -71,9 +79,16 @@ public class GrblSimComm extends GrblCommunicator {
 	}
 	
 	public void lineReceived(String rxLine) {
-		if(!rxLine.startsWith("  block")) {
-		} else
+		if(rxLine.startsWith("  block")) {
+			rxLine= rxLine.substring(8);
+        	String[] s = rxLine.split(",");
+        	Integer[] steps= new Integer[3];
+        	for(int i= 0; i<3; i++)
+        		steps[i]= Integer.parseInt(s[i].trim());
+        	sentLines.getFirst().steps= steps;
+		} else {
 			super.lineReceived(rxLine);
+		}
 	}
 	
     protected synchronized void send(byte[] b) {
@@ -85,25 +100,25 @@ public class GrblSimComm extends GrblCommunicator {
     
 	public void dispose() {
 		super.dispose();
-	     if(reader != null) {
-	    	 reader.exit = true;
-	         try {
-	        	 readerThread.join();
-	         } catch (InterruptedException e) {}
-	         
-	         reader = null;
-	         readerThread = null;
-      }
+		if(reader != null) {
+			reader.exit = true;
+//			try {
+//				readerThread.join();
+//			} catch (InterruptedException e) {}
+
+			reader = null;
+			readerThread = null;
+		}
+		try {
+			out.close();
+			inStd.close();
+			inErr.close();
+		} catch (IOException e) {}
+		process.destroy();
 	}
 
 	@Override
 	public void newPosition(Float[] pos) {
-	}
-
-	@Override
-	public void verStrReceived(String verStr) {
-		// TODO Auto-generated method stub
-
 	}
 
 	@Override
@@ -119,4 +134,8 @@ public class GrblSimComm extends GrblCommunicator {
 		lineBuffer.setDirty(line.no);
 	}
 
+	public synchronized void lineReceived(GCodeLine line, String answer) {
+		line.answerSim= answer;
+		lineBuffer.setDirty(line.no);
+	}
 }

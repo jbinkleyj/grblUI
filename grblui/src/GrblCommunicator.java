@@ -40,6 +40,7 @@ public abstract class GrblCommunicator {
 			String s;
 			while (!exit) {
 				s= getNextToSend().line;
+				if(exit) break;
 				if(!resetting)
 					send((s + "\n").getBytes());
 			}
@@ -54,29 +55,31 @@ public abstract class GrblCommunicator {
 		} catch (IOException e) {}
     }
     
-	public synchronized GCodeLine getNextToSend() {
+	public GCodeLine getNextToSend() {
 		GCodeLine l= lineBuffer.getLineNo(nextToSendLineNo);
 		nextToSendLineNo++;
 		
-		while(l.line.length()>nextToSendMaxLength)
-			try {
-				wait();
-			} catch (InterruptedException e) {}
-		
+		waitForBufferSpace(l.line.length());
 		sentLines.add(l);
 		nextToSendMaxLength-= l.line.length();
 		lineSent(l);
 		return l;
 	}
 	
+	private synchronized void waitForBufferSpace(int lineLen) {
+		while(lineLen>nextToSendMaxLength)
+			try {
+				wait();
+			} catch (InterruptedException e) {}		
+	}
+	
 	public synchronized void lineDispatched(String answer) {
 		if(sentLines.size()==0) return;
 		GCodeLine l= sentLines.removeFirst();
-		l.answer= answer;
-		lineBuffer.setDirty(l.no);
 		
 		nextToSendMaxLength+= l.line.length();
 		notify();
+		lineReceived(l, answer);
 	}
 	
 	public void lineReceived(String rxLine) {
@@ -188,7 +191,7 @@ public abstract class GrblCommunicator {
 		byte[] resetChar= new byte[1];
 		resetChar[0]= 0x18;
 		send(resetChar);
-		getVersionString();
+		versionStringOK();
 		
 		lineBuffer.reset();
 		resetting= false;
@@ -197,9 +200,9 @@ public abstract class GrblCommunicator {
 	public void dispose() {
 	     if(writer != null) {
 	    	 writer.exit = true;
-	         try {
-	        	 writerThread.join();
-	         } catch (InterruptedException e) {}
+//	         try {
+//	        	 writerThread.join();
+//	         } catch (InterruptedException e) {}
 	         
 	         writer = null;
 	         writerThread = null;
@@ -213,14 +216,23 @@ public abstract class GrblCommunicator {
 			} catch (InterruptedException e) {}
     	return verString;
     }
+
+    protected synchronized boolean versionStringOK() {
+		if(verString==null)
+			try {
+				wait(3000);
+			} catch (InterruptedException e) {}
+		return (verString!=null);
+    }
     
 	public abstract void newPosition(Float[] pos);
 	
-	public void verStrReceived(String verStr) {
+	public synchronized void verStrReceived(String verStr) {
     	verString= verStr;
     	notify();
     }
 	
 	public abstract void settingReceived(int idx, Double val, String lable);
 	public abstract void lineSent(GCodeLine line);
+	public abstract void lineReceived(GCodeLine line, String answer);
 }

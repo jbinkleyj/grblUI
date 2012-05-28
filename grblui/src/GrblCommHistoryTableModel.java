@@ -10,12 +10,15 @@ public class GrblCommHistoryTableModel extends AbstractTableModel {
 	private static final long serialVersionUID = 1L;
 	
 	private static final int MAX_LINES= 1000;
-	private String[] columnNames = {"No", "GCode line", "Sent", "Answer", "Done"};
+	private String[] columnNames = {"No", "GCode line", "Sent", "Answer", "SimSent", "SimAnswer", "Steps", "Done"};
 	public static final int NO_ROW= 0;
 	public static final int LINE_ROW= 1;
 	public static final int SENT_ROW= 2;
 	public static final int ANSWER_ROW= 3;
-	public static final int DONE_ROW= 4;
+	public static final int SENT_SIM_ROW= 4;
+	public static final int ANSWER_SIM_ROW= 5;
+	public static final int STEPS= 6;
+	public static final int DONE_ROW= 7;
 	
     public GCodeLineBuffer data;
 
@@ -49,6 +52,16 @@ public class GrblCommHistoryTableModel extends AbstractTableModel {
     		return line.answer;
     	case DONE_ROW:
     		return line.done;
+    	case SENT_SIM_ROW:
+    		return line.sentSim;
+    	case ANSWER_SIM_ROW:
+    		return line.answerSim;
+    	case STEPS:
+    		if(line.steps==null) return null;
+    		else {
+    			String s= line.steps[0].toString() +  ", " + line.steps[1].toString() +  ", " + line.steps[2].toString();
+    			return s;
+    		}
     	default:
     		return null;
     	}
@@ -105,6 +118,12 @@ public class GrblCommHistoryTableModel extends AbstractTableModel {
     		return String.class;
     	case DONE_ROW:
     		return Boolean.class;
+    	case SENT_SIM_ROW:
+    		return Boolean.class;
+    	case ANSWER_SIM_ROW:
+    		return String.class;
+    	case STEPS:
+    		return String.class;
     	default:
     		return String.class;
     	}

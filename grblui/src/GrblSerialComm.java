@@ -1,16 +1,27 @@
 
 import gnu.io.CommPort;
 import gnu.io.CommPortIdentifier;
+import gnu.io.NoSuchPortException;
 import gnu.io.SerialPort;
 import gnu.io.SerialPortEvent;
 import gnu.io.SerialPortEventListener;
+import gnu.io.UnsupportedCommOperationException;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.TooManyListenersException;
+
 import javax.swing.JOptionPane;
 
 public class GrblSerialComm extends GrblCommunicator implements SerialPortEventListener, GrblProtocolProcessor {
+	public static final int CONNECT_OK= 0;
+	public static final int CONNECT_PORT_IN_USE= 1;
+	public static final int CONNECT_NO_SERIAL_PORT= 2;
+	public static final int CONNECT_NO_SUCH_PORT= 3;
+	public static final int CONNECT_IO_EXEPTION= 4;
+	public static final int CONNECT_PROMPT_TIMEOUT= 5;
+	
 	private SerialPort serialPort;
     private InputStream in;
     private byte[] inBuffer = new byte[1024];
@@ -30,36 +41,50 @@ public class GrblSerialComm extends GrblCommunicator implements SerialPortEventL
 		
 	}
 
-    public String connect(String portName) throws Exception {
-        CommPortIdentifier portIdentifier= CommPortIdentifier.getPortIdentifier(portName);
+    public int connect(String portName) {
+        CommPortIdentifier portIdentifier;
+		try {
+			portIdentifier = CommPortIdentifier.getPortIdentifier(portName);
+		} catch (NoSuchPortException e1) {
+			return CONNECT_NO_SUCH_PORT;
+		}
         if (portIdentifier.isCurrentlyOwned()) {
-        	JOptionPane.showMessageDialog(null, "Error: Port is currently in use", "Com Port Error", JOptionPane.ERROR_MESSAGE);
-            return null;
+            return CONNECT_PORT_IN_USE;
         } else {
         	CommPort commPort= null;
         	try {
         		commPort= portIdentifier.open(this.getClass().getName(),2000);
         	} catch (gnu.io.PortInUseException e) {
-            	JOptionPane.showMessageDialog(null, "Error: Port is currently in use", "Com Port Error", JOptionPane.ERROR_MESSAGE);
-                return null;
+                return CONNECT_PORT_IN_USE;
         	}
             
             if(commPort instanceof SerialPort) {
                 serialPort = (SerialPort)commPort;
-                serialPort.setSerialPortParams(9600,SerialPort.DATABITS_8,SerialPort.STOPBITS_1,SerialPort.PARITY_NONE);
+                try {
+					serialPort.setSerialPortParams(9600,SerialPort.DATABITS_8,SerialPort.STOPBITS_1,SerialPort.PARITY_NONE);
+				} catch (UnsupportedCommOperationException e) {}
                 
-                in= serialPort.getInputStream();
+                try {
+					in= serialPort.getInputStream();
+				} catch (IOException e) {
+					return CONNECT_IO_EXEPTION; 
+				}
                                
                 
-                serialPort.addEventListener(this);
+                try {
+					serialPort.addEventListener(this);
+				} catch (TooManyListenersException e) {
+					return CONNECT_IO_EXEPTION; 					
+				}
+                
                 serialPort.notifyOnDataAvailable(true);
                 
                 setupWriter();
                 
-                return getVersionString();
+                if(versionStringOK()) return CONNECT_OK;
+                else return CONNECT_PROMPT_TIMEOUT;
             } else {
-            	JOptionPane.showMessageDialog(null, "Error: Only serial ports are allowed", "Com Port Error", JOptionPane.ERROR_MESSAGE);
-            	return null;
+            	return CONNECT_NO_SERIAL_PORT;
             }
         }
     }
@@ -153,4 +178,10 @@ public class GrblSerialComm extends GrblCommunicator implements SerialPortEventL
 	public void settingReceived(int idx, Double val, String lable) {
 		settings.set(idx, val, lable);
 	}
+	
+	public synchronized void lineReceived(GCodeLine line, String answer) {
+		line.answer= answer;
+		lineBuffer.setDirty(line.no);
+	}
+
 }

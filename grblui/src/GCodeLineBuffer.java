@@ -37,11 +37,9 @@ public class GCodeLineBuffer extends LinkedList<GCodeLine> {
 	}
 	
 	public boolean stopMotion() {
-//		System.out.println("stopMotion");
 		if(size()==0) return false;
 		if(getLast().answer.isEmpty()) return false;
 		if(motionChangeListener!=null && inMotion) {
-//			System.out.println("calling motionChanged(false)");
 			motionChangeListener.motionChanged(false);
 		}
 		inMotion= false;

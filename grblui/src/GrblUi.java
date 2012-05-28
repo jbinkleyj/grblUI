@@ -34,7 +34,9 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 	private JTextField jtfInput;
 	private static GrblCommHistoryTableModel grblCommHistory;
 	private JTable table;
-	private static GrblSerialComm grblComm;
+	private static GrblSerialComm serialComm;
+	private static GrblSimComm simComm;
+	
 	private JSpinner[] posSpinner= new JSpinner[3];
 	private JButton[] posReset= new JButton[3];
 	private JButton stopButton;
@@ -49,58 +51,80 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 	 * Launch the application.
 	 */
 	public static void main(String[] args) {
-		String port= getComPort();
-		if(port!=null) {
-			String verString= null;
-			try {
-				grblCommHistory= new GrblCommHistoryTableModel();
-				grblComm= new GrblSerialComm(grblCommHistory.data);
-				verString= grblComm.connect(port);
-			} catch (Exception e) {
-				e.printStackTrace();
-				System.exit(-1);
-			}
-
-			if(verString!=null) {
-				int settingsOK= grblComm.getSettings();
-				if(settingsOK==GrblSerialComm.SETTINGS_GOTTEN) {
-//					Iterator<GrblParameter> pIter= grblComm.settings.iterator();
-//					while(pIter.hasNext())
-//						System.out.println(pIter.next().lable);
-					
-					EventQueue.invokeLater(new Runnable() {
-						public void run() {
-							try {
-								GrblUi window = new GrblUi(grblComm.verString);
-								grblComm.setPositionListener(window);
-								grblCommHistory.data.setMotionChangeListener(window);
-								window.frame.setVisible(true);
-							} catch (Exception e) {
-								e.printStackTrace();
-							}
-						}
-					});
-				} else {
-					switch(settingsOK) {
-					case GrblSerialComm.SETTINGS_MISMATCH:
-						JOptionPane.showMessageDialog(null, "Error: mismatch between grbl version and settings", "Grbl Error", JOptionPane.ERROR_MESSAGE);
-					case GrblSerialComm.SETTINGS_TIME_OUT:
-						JOptionPane.showMessageDialog(null, "Error: time out getting grbl settings", "Grbl Error", JOptionPane.ERROR_MESSAGE);						
-					}					
+		grblCommHistory= new GrblCommHistoryTableModel();
+		setupSerialComm();
+		setupSimComm();
+		
+		EventQueue.invokeLater(new Runnable() {
+			public void run() {
+				try {
+					GrblUi window = new GrblUi(serialComm.verString);
+					serialComm.setPositionListener(window);
+					grblCommHistory.data.setMotionChangeListener(window);
+					window.frame.setVisible(true);
+				} catch (Exception e) {
+					e.printStackTrace();
 				}
-			} // else
-//				JOptionPane.showMessageDialog(null, "Error: time out getting grbl version", "Grbl Error", JOptionPane.ERROR_MESSAGE);
-		}
+			}
+		});
 	}
 
 	public GrblUi(String verString) {
 		initialize(verString);
 	}
 
+	private static void setupSerialComm() {
+		serialComm= new GrblSerialComm(grblCommHistory.data);
+		
+		String port= getComPort();
+		if(port==null) return;
+		switch(serialComm.connect(port)) {
+		case GrblSerialComm.CONNECT_OK:
+			switch(serialComm.getSettings()) {
+			case GrblSerialComm.SETTINGS_MISMATCH:
+				JOptionPane.showMessageDialog(null, "Error: mismatch between grbl version and settings", "Grbl Error", JOptionPane.ERROR_MESSAGE);
+			case GrblSerialComm.SETTINGS_TIME_OUT:
+				JOptionPane.showMessageDialog(null, "Error: time out getting grbl settings", "Grbl Error", JOptionPane.ERROR_MESSAGE);						
+			}								
+		case GrblSerialComm.CONNECT_PORT_IN_USE:
+	    	JOptionPane.showMessageDialog(null, "Error: Port is currently in use", "Com Port Error", JOptionPane.ERROR_MESSAGE);
+		case GrblSerialComm.CONNECT_NO_SERIAL_PORT: 
+			JOptionPane.showMessageDialog(null, "Error: Only serial ports are allowed", "Com Port Error", JOptionPane.ERROR_MESSAGE);
+		case GrblSerialComm.CONNECT_NO_SUCH_PORT:
+			JOptionPane.showMessageDialog(null, "Error: Port does not exist", "Com Port Error", JOptionPane.ERROR_MESSAGE);
+		case GrblSerialComm.CONNECT_IO_EXEPTION: 
+			JOptionPane.showMessageDialog(null, "Error: Could not get input stream or set listener", "Com Port Error", JOptionPane.ERROR_MESSAGE);
+		case GrblSerialComm.CONNECT_PROMPT_TIMEOUT:
+			JOptionPane.showMessageDialog(null, "Error: grbl didn't answer with version string in 3 seconds", "grbl Error", JOptionPane.ERROR_MESSAGE);
+		}
+	}
+	
+	private static void setupSimComm() {
+		simComm= new GrblSimComm(grblCommHistory.data);
+		
+		switch(simComm.connect()) {
+		case GrblSimComm.CONNECT_PROCESS_NOT_STARTED:
+			JOptionPane.showMessageDialog(null, "Couldn't start simulator", "Simulator Error", JOptionPane.ERROR_MESSAGE);			
+		case GrblSimComm.CONNECT_PROMPT_TIMEOUT:
+			JOptionPane.showMessageDialog(null, "Error: grbl didn't answer with version string in 3 seconds", "Simulator Error", JOptionPane.ERROR_MESSAGE);
+		}
+	}
+	
 	private void initialize(String verString) {
 		frame = new JFrame("grblUI (grbl version " + verString + ")");
 		frame.setBounds(100, 100, 450, 300);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+		frame.addWindowListener(new WindowAdapter() {
+	        public void windowClosing(WindowEvent e) {
+	        	try {
+//					serialComm.dispose();
+					simComm.dispose();
+				} catch (Throwable e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+	        }
+		});
 		JPanel commandPane = new JPanel(new BorderLayout());
 		tabbedPane = new JTabbedPane();
 		
@@ -245,7 +269,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 		playButton.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent evt) {
 //				System.out.println("playButton");
-				grblComm.start();
+				serialComm.start();
 //				playButton.setVisible(false);
 //				pauseButton.setVisible(true);					
 			}
@@ -256,7 +280,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 		pauseButton.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent evt) {
 //				System.out.println("playButton");
-				grblComm.pause();
+				serialComm.pause();
 //				playButton.setVisible(true);
 //				pauseButton.setVisible(false);					
 			}
@@ -265,7 +289,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 		stopButton= new JButton(new ImageIcon(this.getClass().getResource("/toolbarButtonGraphics/media/Stop24.gif")));
 		stopButton.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent evt) {
-				grblComm.reset();
+				serialComm.reset();
 //				playButton.setVisible(true);
 //				pauseButton.setVisible(false);					
 			}
@@ -320,6 +344,8 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 	
 	private JPanel createSettingsPanel() {
 		JPanel panel = new JPanel();
+		if(serialComm.settings==null) return panel;
+		
 		GroupLayout layout = new GroupLayout(panel);
 		panel.setLayout(layout);
 
@@ -330,7 +356,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 		GroupLayout.SequentialGroup inGroup = layout.createSequentialGroup();
 		ParallelGroup hLabels = layout.createParallelGroup();
 		ParallelGroup hInputs = layout.createParallelGroup();
-		Iterator<GrblParameter> pIter = grblComm.settings.iterator();
+		Iterator<GrblParameter> pIter = serialComm.settings.iterator();
 		while (pIter.hasNext()) {
 			GrblParameter p = pIter.next();
 			hLabels.addComponent(p.jLabel);
@@ -343,7 +369,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 
 		GroupLayout.SequentialGroup vGroup = layout.createSequentialGroup();
 		ParallelGroup vLine;
-		pIter = grblComm.settings.iterator();
+		pIter = serialComm.settings.iterator();
 		while (pIter.hasNext()) {
 			GrblParameter p = pIter.next();
 			vLine= layout.createParallelGroup(Alignment.BASELINE);
@@ -355,13 +381,13 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 		JButton apply= new JButton("Apply");
 		apply.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent evt) {
-				grblComm.settings.apply();
+				serialComm.settings.apply();
 			}
 		});
 		JButton revert= new JButton("Revert");
 		revert.addActionListener(new ActionListener() {
 			public void actionPerformed(ActionEvent evt) {
-				grblComm.settings.revert();
+				serialComm.settings.revert();
 			}
 		});
 		hGroup.addGroup(layout.createSequentialGroup().addComponent(apply).addComponent(revert));
@@ -375,6 +401,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 	private static String getComPort() {
 //		return new String("COM7");
 		LinkedList<String> list = new LinkedList<String>();
+        list.add("None");
 		Enumeration thePorts = CommPortIdentifier.getPortIdentifiers();
         while (thePorts.hasMoreElements()) {
             CommPortIdentifier com = (CommPortIdentifier) thePorts.nextElement();
@@ -382,11 +409,8 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
             	list.add(com.getName());
             }
         }
-        if(list.size()==0) {
-        	JOptionPane.showMessageDialog(null, "Error: No COM ports available", "Com Port Error", JOptionPane.ERROR_MESSAGE);
-        	return null;
-        }
-        return (String)JOptionPane.showInputDialog(
+        
+        String commPort= (String)JOptionPane.showInputDialog(
                             null,
                             "Please select the COM port that grbl is connected to",
                             "Select COM port",
@@ -394,7 +418,8 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
                             null,
                             list.toArray(),
                             list.get(0));
-
+        if(commPort=="None") return null;
+        else return commPort;
 	}
 	
 	public void updatePosition(Float[] pos) {
@@ -424,21 +449,17 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 		}
 
 		public void actionPerformed(ActionEvent e) {
-//			System.out.println("G92" + ('X'+xyz) + "0");
 			grblCommHistory.addLine("G92" + ((char)('X'+xyz)) + "0");
 		}
 	}
 
 	public void stateChanged(ChangeEvent e) {
-//		System.out.println("stateChanged");
 		if(e.getSource() instanceof JSpinner) {
-//			System.out.println("stateChanged JSpinner");
 			JSpinner thisSpinner = (JSpinner)(e.getSource());
 			for(int i= 0; i<3; i++) {
 				if(thisSpinner==posSpinner[i]) {
 					Float newPos= Float.parseFloat(thisSpinner.getValue().toString());
-//					System.out.println("stateChanged JSpinner to " + newPos);
-					if(thisSpinner.isEnabled() && Math.abs(newPos-grblComm.currPos[i])>1e-6) {
+					if(thisSpinner.isEnabled() && Math.abs(newPos-serialComm.currPos[i])>1e-6) {
 						grblCommHistory.addLine("G0" + ((char)('X'+i)) + newPos.toString());
 					}
 					break;
