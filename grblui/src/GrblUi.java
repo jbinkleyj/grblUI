@@ -29,7 +29,6 @@ import java.util.LinkedList;
 
 
 public class GrblUi implements CNCPositionListener, MotionChangeListener, ChangeListener {
-
 	private JFrame frame;
 	private JTextField jtfInput;
 	private static GrblCommHistoryTableModel grblCommHistory;
@@ -62,6 +61,9 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 					serialComm.setPositionListener(window);
 					grblCommHistory.data.setMotionChangeListener(window);
 					window.frame.setVisible(true);
+					PathView pathView= new PathView();
+					pathView.init();
+					pathView.frame.setVisible(true);
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
@@ -112,7 +114,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 	
 	private void initialize(String verString) {
 		frame = new JFrame("grblUI (grbl version " + verString + ")");
-		frame.setBounds(100, 100, 450, 300);
+		frame.setBounds(50, 50, 300, 300);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.addWindowListener(new WindowAdapter() {
 	        public void windowClosing(WindowEvent e) {
