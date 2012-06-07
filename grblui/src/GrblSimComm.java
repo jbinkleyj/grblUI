@@ -16,10 +16,15 @@ public class GrblSimComm extends GrblCommunicator {
     private InputStream inErr;
     private GrblReader reader;
     private Thread readerThread;
+    private NewBlockListener newBlockListener;
 
 
 	public GrblSimComm(GCodeLineBuffer lineBuffer) {
 		super(lineBuffer);
+	}
+	
+	public void setNewBlockListener(NewBlockListener newBlockListener) {
+		this.newBlockListener= newBlockListener;
 	}
 
 	public int connect() {
@@ -86,6 +91,7 @@ public class GrblSimComm extends GrblCommunicator {
         	for(int i= 0; i<3; i++)
         		steps[i]= Integer.parseInt(s[i].trim());
         	sentLines.getFirst().steps= steps;
+        	if(newBlockListener!=null) newBlockListener.newBlock(steps);
 		} else {
 			super.lineReceived(rxLine);
 		}

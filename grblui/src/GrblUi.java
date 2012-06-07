@@ -35,6 +35,7 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 	private JTable table;
 	private static GrblSerialComm serialComm;
 	private static GrblSimComm simComm;
+	private static PathView pathView;
 	
 	private JSpinner[] posSpinner= new JSpinner[3];
 	private JButton[] posReset= new JButton[3];
@@ -61,9 +62,12 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 					serialComm.setPositionListener(window);
 					grblCommHistory.data.setMotionChangeListener(window);
 					window.frame.setVisible(true);
-					PathView pathView= new PathView();
+					pathView= new PathView();
+					simComm.setNewBlockListener(pathView);
 					pathView.init();
 					pathView.frame.setVisible(true);
+//					DoorApp door= new DoorApp();
+//					door.frame.setVisible(true);
 				} catch (Exception e) {
 					e.printStackTrace();
 				}
@@ -482,4 +486,5 @@ public class GrblUi implements CNCPositionListener, MotionChangeListener, Change
 				grblCommHistory.addLine(s[i]);
 			}
 	}
+
 }
