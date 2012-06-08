@@ -16,6 +16,7 @@ import javax.media.j3d.AmbientLight;
 import javax.media.j3d.Appearance;
 import javax.media.j3d.Background;
 import javax.media.j3d.Behavior;
+import javax.media.j3d.BoundingBox;
 import javax.media.j3d.BoundingSphere;
 import javax.media.j3d.BranchGroup;
 import javax.media.j3d.Canvas3D;
@@ -43,6 +44,7 @@ import javax.vecmath.AxisAngle4f;
 import javax.vecmath.Color3f;
 import javax.vecmath.Point3d;
 import javax.vecmath.Point3f;
+import javax.vecmath.Vector3d;
 import javax.vecmath.Vector3f;
 
 //import com.sun.image.codec.jpeg.JPEGCodec;
@@ -61,7 +63,10 @@ public class PathView implements NewBlockListener {
 	LineStripArray line;
 	private AddLineBehavior addLineBehavior;
 	private LinkedList<Integer[]> newBlocks= new LinkedList<Integer[]>();
-	private Integer[] lastPoint= new Integer[]{0, 0, 0};
+	private Point3d lastPoint= new Point3d();
+	private BoundingBox bounds= new BoundingBox(new Point3d(), new Point3d());
+	private Point3d upperBound= new Point3d();
+	private Point3d lowerBound= new Point3d();
 			
 	// colors for use in the cones
 	Color3f red = new Color3f(1.0f, 0.0f, 0.0f);
@@ -137,12 +142,14 @@ public class PathView implements NewBlockListener {
         private void addBlock(Integer[] steps) {
     		int nextIdx= line.getValidVertexCount();
     		System.out.println("nextIdx: " + nextIdx);
-    		lastPoint[0]+= steps[0];
-    		lastPoint[1]+= steps[1];
-    		lastPoint[2]+= steps[2];
+    		lastPoint.x+= steps[0].floatValue();
+    		lastPoint.y+= steps[1].floatValue();
+    		lastPoint.z+= steps[2].floatValue();
+    		bounds.combine(lastPoint);
     		
-    		line.setCoordinate(nextIdx, new float[]{lastPoint[0].floatValue(), lastPoint[1].floatValue(), lastPoint[2].floatValue()});
+    		line.setCoordinate(nextIdx, lastPoint);
     		line.setStripVertexCounts(new int[]{nextIdx+1});
+    		zoomToFit();
         }
     }
    
@@ -152,7 +159,7 @@ public class PathView implements NewBlockListener {
 
 		addLineBehavior= new AddLineBehavior();
         // set scheduling bounds for behavior objects   
-        BoundingSphere bounds = new BoundingSphere(new Point3d(0, 0, 0), 1000);   
+        BoundingSphere bounds = new BoundingSphere(new Point3d(0, 0, 0), 10000);   
         addLineBehavior.setSchedulingBounds(bounds);   
 
 		objRoot.addChild(addLineBehavior);
@@ -228,51 +235,54 @@ public class PathView implements NewBlockListener {
 
 		// This will move the ViewPlatform back a bit so the
 		// objects in the scene can be viewed.
-		u.getViewingPlatform().setNominalViewingTransform();
-
+//		u.getViewingPlatform().setNominalViewingTransform();
+		TransformGroup vt= u.getViewingPlatform().getViewPlatformTransform();		
+		Transform3D t3d = new Transform3D();
+		vt.getTransform(t3d);
+		t3d.lookAt(new Point3d(0,0,1), new Point3d(0,0,0), new Vector3d(0,1,0));
+		t3d.invert();
+		vt.setTransform(t3d);
+		
 		BranchGroup scene = createSceneGraph();
 		u.addBranchGraph(scene);
 		
-		OrbitBehavior orbit= new OrbitBehavior(canvas);
-		orbit.setSchedulingBounds(new BoundingSphere(new Point3d(0, 0, 0), 1000));
-		u.getViewingPlatform().setViewPlatformBehavior(orbit);
+//		OrbitBehavior orbit= new OrbitBehavior(canvas);
+//		orbit.setSchedulingBounds(new BoundingSphere(new Point3d(0, 0, 0), 1000));
+//		u.getViewingPlatform().setViewPlatformBehavior(orbit);
 		
 //		System.out.println("getViewPlatform().getActivationRadius: " + u.getViewingPlatform().getViewPlatform().getActivationRadius());		
 	}
 
-//	private void initUserPosition()
-//	// Set the user's initial viewpoint using lookAt()
-//	{
-//	ViewingPlatform vp = su.getViewingPlatform();
-//	TransformGroup steerTG = vp.getViewPlatformTransform();
-//	Transform3D t3d = new Transform3D();
-//	steerTG.getTransform(t3d);
-//	// args are: viewer posn, where looking, up direction
-//	t3d.lookAt(USERPOSN, new Point3d(0,0,0), new Vector3d(0,1,0));
-//	t3d.invert();
-//	steerTG setTransform(t3d); steerTG.setTransform(t3d);
-//	steerTG setTransform(t3d);
-//	ViewingPlatform viewingPlatform = new ViewingPlatform();
-//
-//    // **** This is the part I was missing: Activation radius
-//    viewingPlatform.getViewPlatform().setActivationRadius(300f);
-//
-//    // Set the view position back far enough so that we can see things
-//    TransformGroup viewTransform = viewingPlatform.getViewPlatformTransform();
-//    Transform3D t3d = new Transform3D();
-//    // Note: Now the large value works
-//    t3d.lookAt(new Point3d(0,0,150), new Point3d(0,0,0), new Vector3d(0,1,0));
-//    t3d.invert();
-//    viewTransform.setTransform(t3d);
-//
-//    // Set back clip distance so things don't disappear 
-//    Viewer viewer = new Viewer(canvas3d);
-//    View view = viewer.getView();
-//    view.setBackClipDistance(300);
-//
-//    SimpleUniverse universe = new SimpleUniverse(viewingPlatform, viewer);
-//	}  // end of initUserPosition()
-	// create a panel with a tabbed pane holding each of the edit panels
+	private void zoomToFit() {
+		bounds.getUpper(upperBound);
+		bounds.getLower(lowerBound);
+		double extentX= upperBound.x-lowerBound.x;
+		if(extentX<=0) return;
+		
+		double centerX= 0.5*(upperBound.x+lowerBound.x);
+		double centerY= 0.5*(upperBound.y+lowerBound.y);
+		double centerZ= 0.5*(upperBound.z+lowerBound.z);
+		double extentZ= upperBound.z-lowerBound.z;
+		Point3d center= new Point3d(centerX,centerY,centerZ);
+//		System.out.println("center: "+ center);
+		Point3d eyeOffset= new Point3d(0,0,1);
+		double angleOfView= canvas.getView().getFieldOfView();
+		double distance= (1.03*extentX/2)/Math.tan(angleOfView/2);
+		eyeOffset.scale(distance);
+		eyeOffset.add(center);
+//		System.out.println("angleOfView: " + angleOfView + ", distance: " + distance + ", eyeOffset: "+ eyeOffset);
+		
+		
+		TransformGroup vt= u.getViewingPlatform().getViewPlatformTransform();		
+		Transform3D t3d = new Transform3D();
+		vt.getTransform(t3d);
+		t3d.lookAt(eyeOffset, center, new Vector3d(0,1,0));
+		t3d.invert();
+		vt.setTransform(t3d);
+		
+		canvas.getView().setBackClipDistance(1.05*distance+extentZ);
+	}
+	
 	public void destroy() {
 		u.removeAllLocales();
 	}
